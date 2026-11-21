@@ -1,7 +1,7 @@
 # Extra deps for the localhost DLP daemon (same image, second process).
-# Install after requirements.txt.
+# Install after requirements.txt. Torch is installed separately in the
+# Dockerfile (CPU wheel or CUDA wheel via WITH_GPU=1).
 laya>=0.3.6,!=0.3.7
-torch
 huggingface_hub
 watchdog>=4.0.0
 pypdf>=4.0.0

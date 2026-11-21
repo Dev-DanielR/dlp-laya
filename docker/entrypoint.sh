@@ -58,7 +58,8 @@ if [ "${CLASSIFY_MODE}" = "dlp" ] && [ "${DLP_AUTOSTART}" != "0" ]; then
   export DLP_URL="${DLP_URL:-http://127.0.0.1:${DLP_PORT}}"
   export DLP_BIND_HOST="${DLP_BIND_HOST:-127.0.0.1}"
   echo "Starting DLP daemon on ${DLP_BIND_HOST}:${DLP_PORT} (DLP_URL=${DLP_URL})"
-  echo "Laya weights load in background after /healthz (cache: ${LAYA_CACHE_DIR:-/var/cache/laya})"
+  echo "Laya cache: ${LAYA_CACHE_DIR:-/opt/laya-cache}  device: ${LAYA_DEVICE:-auto}  HF_HUB_OFFLINE=${HF_HUB_OFFLINE:-0}"
+  echo "Laya weights load in background after /healthz (watcher paused until startup batch finishes)"
   # Keep DLP on the same stdout/stderr as the container (docker logs).
   python -u -m dlp_service &
   DLP_PID=$!

@@ -280,7 +280,8 @@ Registra un cliente OIDC confidencial con redirect `OIDC_REDIRECT_URI` (p. ej. `
 | `DLP_URL` | Base del daemon (`http://127.0.0.1:8091` si `dlp` y no se define) |
 | `DLP_PORT` / `DLP_AUTOSTART` | Puerto loopback y arranque del segundo proceso |
 | `DLP_DETECTOR` | `laya` (default) o `rules` (sin pesos; solo lab/tests) |
-| `LAYA_*` | `LAYA_DEVICE`, `LAYA_THRESHOLD`, `LAYA_REGION`, `LAYA_CACHE_DIR` |
+| `LAYA_*` | `LAYA_DEVICE` (`cuda`/`cpu`), `LAYA_THRESHOLD`, `LAYA_REGION`, `LAYA_CACHE_DIR` (default `/opt/laya-cache`, baked in image) |
+| `ENABLE_GPU` | Script local: `1` (default) pasa `--gpus all`; si falla, reintenta en CPU |
 | `FILES_ROOT` | Por defecto `/files` |
 | `ACL_PATH` / `MANIFEST_PATH` | ACL y manifiesto |
 | `TLS_CERT_PATH` / `TLS_KEY_PATH` | Rutas PEM (self-signed al arrancar si faltan; no van en la imagen) |
@@ -294,18 +295,30 @@ Ejecutar **dentro de WSL** (no desde PowerShell vía `wsl -e …`):
 
 ```bash
 # Editar docker/.env (ver .env.example), luego:
-./scripts/docker-build.sh
-./scripts/docker-start.sh          # https://localhost:8443
+./scripts/docker-build.sh          # WITH_GPU=1 (default): CUDA torch + pesos Laya horneados
+./scripts/docker-start.sh          # https://localhost:8443  (--gpus all si ENABLE_GPU=1)
 ./scripts/docker-status.sh         # logs + DLP/web health (sin ps/curl en la imagen)
 ./scripts/docker-attach.sh         # shell en el contenedor
 ./scripts/docker-stop.sh
 # Recrear si cambió .env/imagen: FORCE=1 ./scripts/docker-start.sh
 ```
 Nombre del contenedor: `CONTAINER_NAME` (default `dlp-laya`). No uses la variable `NAME` — WSL la exporta como el nombre del PC Windows.
-Con `CLASSIFY_MODE=dlp`, el primer arranque descarga pesos Laya (puede tardar minutos); mirar `docker logs -f dlp-laya` o `./scripts/docker-status.sh`.
-Caché Laya/certs en volúmenes Docker (`dlp-laya-laya`, `dlp-laya-certs`); `--restart unless-stopped` por si el daemon reinicia contenedores.
+Los pesos Laya (`goku-san/laya-experts`) se hornean en `/opt/laya-cache` en el build; el arranque ya no descarga de Hugging Face (`HF_HUB_OFFLINE=1`).
+GPU: hace falta el runtime NVIDIA en Docker Desktop/WSL (`--gpus all`). Si falla con `CDI: no known GPU vendor found`, actualiza Docker Desktop + `wsl --update`, reinicia Desktop, y prueba `docker run --rm --gpus all nvidia/cuda:12.4.1-base-ubuntu22.04 nvidia-smi`. `docker-start` reintenta en CPU y Laya cae a `LAYA_DEVICE=cpu` (lento en RTX ausente). Certs + caché SQLite DLP: volúmenes `dlp-laya-certs` / `dlp-laya-dlp`. `--restart unless-stopped` por si el daemon reinicia contenedores.
+El watcher de ficheros permanece en pausa hasta terminar el lote de arranque (evita invalidar el batch).
 
-`WITH_DLP=0 ./scripts/docker-build.sh` omite torch/laya. Desarrollo sin Docker (HTTP): `PYTHONPATH=src … python -m webserver` (`COOKIE_SECURE=0`). Tests: `pytest tests/webserver tests/dlp_service`.
+`WITH_DLP=0 ./scripts/docker-build.sh` omite torch/laya. `WITH_GPU=0` usa torch CPU. Desarrollo sin Docker (HTTP): `PYTHONPATH=src … python -m webserver` (`COOKIE_SECURE=0`). Tests: `pytest tests/webserver tests/dlp_service`.
+
+### E2E Playwright (caso 04)
+
+Sustituto del intruso Kali para el demo: Chromium inicia sesión real en NetBird/Dex y descarga `casos/caso04_proyecto_mixto.pdf` como `alta` / `media` / `baja`.
+
+```bash
+# Contenedor arriba en :8443 y USER_* en docker/.env, luego:
+./scripts/e2e-uc04.sh
+```
+
+Espera: ana → toast `Descarga (completo)`; bruno → `Descarga (sanitizado)`; carla → 403 `Denegado` (sin ACL en caso04). Variables: `E2E_BASE_URL` (default `https://localhost:8443`).
 
 ### Despliegue en VM
 

@@ -26,8 +26,25 @@ class DebouncedWatcher:
         self._pending: dict[str, float] = {}
         self._lock = threading.Lock()
         self._stop = threading.Event()
+        self._paused = threading.Event()
+        # Start paused so startup batch owns classification without invalidate races.
+        self._paused.set()
         self._observer = None
         self._timer_thread: threading.Thread | None = None
+
+    def pause(self) -> None:
+        self._paused.set()
+        with self._lock:
+            self._pending.clear()
+        log.info("watcher paused")
+
+    def resume(self) -> None:
+        self._paused.clear()
+        log.info("watcher resumed")
+
+    @property
+    def paused(self) -> bool:
+        return self._paused.is_set()
 
     def start(self) -> None:
         try:
@@ -43,8 +60,12 @@ class DebouncedWatcher:
         pending = self._pending
         lock = self._lock
 
+        paused = self._paused
+
         class Handler(FileSystemEventHandler):
             def on_any_event(self, event):  # noqa: ANN001
+                if paused.is_set():
+                    return
                 if event.is_directory:
                     return
                 src = getattr(event, "dest_path", None) or event.src_path
@@ -79,6 +100,10 @@ class DebouncedWatcher:
 
     def _loop(self) -> None:
         while not self._stop.wait(0.25):
+            if self._paused.is_set():
+                with self._lock:
+                    self._pending.clear()
+                continue
             due: list[str] = []
             now = time.time()
             with self._lock:
@@ -90,6 +115,8 @@ class DebouncedWatcher:
                 self._run(rel)
 
     def _run(self, rel: str) -> None:
+        if self._paused.is_set():
+            return
         self.classifier.invalidate(rel)
         path = self.files_root / rel
         if not path.is_file():

@@ -4,12 +4,16 @@ from __future__ import annotations
 
 import logging
 import threading
+import time
 from pathlib import Path
 
 from dlp_service.batch_state import BatchState
 from dlp_service.classify import Classifier
 
 log = logging.getLogger("dlp_service.batch")
+
+# How long to wait when another thread owns the file before retrying.
+_LOCK_POLL_SECONDS = 0.5
 
 
 def walk_files(root: Path) -> list[str]:
@@ -24,6 +28,19 @@ def walk_files(root: Path) -> list[str]:
         rel = str(path.relative_to(root)).replace("\\", "/")
         out.append(rel)
     return sorted(out)
+
+
+def _classify_until_settled(classifier: Classifier, rel: str) -> None:
+    """Run classify, waiting out transient locks from a parallel owner."""
+    deadline = time.time() + max(classifier.lock_seconds * 2.0, 60.0)
+    while True:
+        rec = classifier.classify(path=rel)
+        if rec.status != "locked" and rec.phase != "classifying":
+            return
+        if time.time() >= deadline:
+            log.warning("batch gave up waiting on lock for %s (status=%s)", rel, rec.status)
+            return
+        time.sleep(_LOCK_POLL_SECONDS)
 
 
 def recover_missing(
@@ -51,7 +68,7 @@ def recover_missing(
                         state.tick()
                         continue
                 try:
-                    classifier.classify(path=rel)
+                    _classify_until_settled(classifier, rel)
                 except Exception:  # noqa: BLE001
                     log.exception("batch classify failed: %s", rel)
                 finally:

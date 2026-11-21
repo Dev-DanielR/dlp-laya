@@ -33,6 +33,13 @@ audit.jsonl
 # Project artifacts
 InformeBase.docx
 
+# Node / Playwright e2e
+node_modules/
+playwright-report/
+test-results/
+blob-report/
+playwright/.cache/
+
 # Generated corpus (regen via scripts/generate_corpus.*)
 data/files/
 data/corpus_bodies/

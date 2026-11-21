@@ -1,0 +1,15 @@
+{
+  "name": "dlp-laya",
+  "private": true,
+  "description": "E2E Playwright tests for DAP Laya (caso de uso 04)",
+  "scripts": {
+    "test:e2e": "playwright test",
+    "test:e2e:uc04": "playwright test tests/e2e/uc04-completo-sanitizado-denegado.spec.ts",
+    "test:e2e:ui": "playwright test --ui",
+    "test:e2e:report": "playwright show-report"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.56.1",
+    "dotenv": "^16.6.1"
+  }
+}

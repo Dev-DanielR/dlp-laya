@@ -43,22 +43,31 @@ def _warmup_then_batch(
     classifier: Classifier,
     settings: DlpSettings,
     batch_state: BatchState,
+    watcher: DebouncedWatcher,
 ) -> None:
-    # Give Sign-in / NetBird redirect a quiet window before HF+torch contend for RAM/CPU.
-    delay = float(os.environ.get("DLP_WARMUP_DELAY_SECONDS", "20"))
+    # Quiet window before torch contend for RAM/CPU. Default 0 when weights are baked;
+    # set DLP_WARMUP_DELAY_SECONDS=20 if Sign-in still races a cold HF download.
+    delay = float(os.environ.get("DLP_WARMUP_DELAY_SECONDS", "0"))
     if delay > 0:
         log.info("Warmup delay %.0fs (login can proceed first)", delay)
         threading.Event().wait(delay)
-    if hasattr(detector, "ensure_loaded"):
-        log.info("Loading Laya weights in background…")
-        try:
-            detector.ensure_loaded()
-            log.info("Laya model ready (%s)", getattr(detector, "model_id", "?"))
-        except Exception:  # noqa: BLE001
-            log.exception("Laya model failed to load — classify will error until fixed")
-            return
-    if settings.batch_on_start:
-        recover_missing(classifier, background=False, batch_state=batch_state)
+    watcher.pause()
+    try:
+        if hasattr(detector, "ensure_loaded"):
+            log.info("Loading Laya weights in background…")
+            try:
+                detector.ensure_loaded()
+                log.info("Laya model ready (%s)", getattr(detector, "model_id", "?"))
+            except Exception:  # noqa: BLE001
+                log.exception(
+                    "Laya model failed to load — classify will error until fixed"
+                )
+                return
+        if settings.batch_on_start:
+            recover_missing(classifier, background=False, batch_state=batch_state)
+    finally:
+        # Live tree edits after the corpus warmup; static lab image rarely needs this.
+        watcher.resume()
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -98,12 +107,13 @@ def main(argv: list[str] | None = None) -> int:
         classifier=classifier,
         debounce_seconds=settings.debounce_seconds,
     )
+    # Starts paused; resumed after warmup/batch so invalidate cannot race recovery.
     watcher.start()
 
     # Load model + batch after /healthz can bind (lazy Laya).
     threading.Thread(
         target=_warmup_then_batch,
-        args=(detector, classifier, settings, batch_state),
+        args=(detector, classifier, settings, batch_state, watcher),
         name="dlp-warmup",
         daemon=True,
     ).start()

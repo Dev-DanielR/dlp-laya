@@ -98,8 +98,11 @@ class LayaPiiRedactor:
         if cache_dir:
             os.environ.setdefault("HF_HOME", cache_dir)
             os.environ.setdefault("HUGGINGFACE_HUB_CACHE", cache_dir)
+            # Prefer local/baked weights; network only if a revision is missing.
+            os.environ.setdefault("HF_HUB_OFFLINE", os.environ.get("HF_HUB_OFFLINE", "0"))
         self._model = model
         self._subfolder = subfolder
+        self._device_request = device
         self._device = device
         self.batch_size = batch_size
         self.model_id = f"{model}:{subfolder}"
@@ -116,6 +119,31 @@ class LayaPiiRedactor:
             ),
             "criteria": LABELS,
         }
+
+    @staticmethod
+    def resolve_device(requested: str | None) -> str | None:
+        """Map LAYA_DEVICE to a torch device; fall back to CPU if CUDA is missing."""
+        if not requested:
+            return None
+        want = requested.strip().lower()
+        if want in {"cpu", "mps"}:
+            return want
+        if want in {"cuda", "gpu"} or want.startswith("cuda:"):
+            try:
+                import torch
+
+                if torch.cuda.is_available():
+                    return "cuda" if want in {"cuda", "gpu"} else want
+            except Exception:  # noqa: BLE001
+                pass
+            import logging
+
+            logging.getLogger("dlp_service.laya_pii").warning(
+                "LAYA_DEVICE=%s requested but CUDA is unavailable — using CPU",
+                requested,
+            )
+            return "cpu"
+        return requested
 
     @property
     def ready(self) -> bool:
@@ -140,6 +168,7 @@ class LayaPiiRedactor:
             try:
                 import laya
 
+                self._device = self.resolve_device(self._device_request)
                 self.agent = laya.Agent(
                     self._model, subfolder=self._subfolder, device=self._device
                 )
