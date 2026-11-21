@@ -1,0 +1,8 @@
+# Extra deps for the localhost DLP daemon (same image, second process).
+# Install after requirements.txt.
+laya>=0.3.6,!=0.3.7
+torch
+huggingface_hub
+watchdog>=4.0.0
+pypdf>=4.0.0
+numpy

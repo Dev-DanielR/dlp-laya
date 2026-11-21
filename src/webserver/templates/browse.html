@@ -13,9 +13,194 @@
 {% endblock %}
 
 {% block content %}
-<section class="rounded-2xl border border-slate-800 bg-slate-900/60 shadow-xl">
+<section
+  class="rounded-2xl border border-slate-800 bg-slate-900/60 shadow-xl"
+  x-data='dlpWarmup({ classifyMode: {{ (classify_mode or "stub")|tojson }}, path: {{ (relpath or "")|tojson }} })'
+  x-init="start()"
+  @htmx:after-swap.document="onBrowserSwap($event)"
+>
+  <div
+    class="border-b border-slate-800 px-4 py-3 sm:px-6"
+    x-show="visible"
+    x-cloak
+    aria-live="polite"
+  >
+    <div class="flex items-center justify-between gap-3 text-xs text-slate-400">
+      <span x-text="label"></span>
+      <span class="tabular-nums" x-text="ratio"></span>
+    </div>
+    <div class="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-800">
+      <div
+        class="h-full rounded-full transition-all duration-500"
+        :class="complete ? 'bg-emerald-500' : 'bg-sky-500'"
+        :style="`width: ${pct}%`"
+      ></div>
+    </div>
+  </div>
   <div id="browser">
     {% include "partials/listing.html" %}
   </div>
 </section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  function dlpWarmup(opts) {
+    const TERMINAL = new Set(['ready', 'denied_timeout', 'missing']);
+    const TITLES = {
+      pending: 'Pendiente de clasificar',
+      classifying: 'Clasificando…',
+      ready: 'Clasificado',
+      denied_timeout: 'Tiempo de clasificación agotado',
+      missing: 'No encontrado',
+    };
+    return {
+      classifyMode: opts.classifyMode || 'stub',
+      path: opts.path || '',
+      total: 0,
+      done: 0,
+      complete: false,
+      batchRunning: false,
+      modelLoading: false,
+      modelReady: true,
+      modelError: null,
+      visible: true,
+      timer: null,
+      get pct() {
+        if (!this.total) return this.complete ? 100 : 0;
+        return Math.min(100, Math.round((this.done / this.total) * 100));
+      },
+      get ratio() {
+        if (!this.total && this.complete) return 'listo';
+        return `${this.done}/${this.total || '—'}`;
+      },
+      get label() {
+        if (this.classifyMode === 'stub') return 'DLP stub · listo';
+        if (this.modelError) return 'Error al cargar Laya';
+        if (this.modelLoading || !this.modelReady) return 'Cargando modelo Laya…';
+        if (this.complete) return 'DLP listo';
+        if (this.batchRunning) return 'Clasificando DLP (lote)…';
+        return 'Clasificando DLP…';
+      },
+      start() {
+        this.tick();
+        this.arm();
+      },
+      arm() {
+        if (this.timer) clearInterval(this.timer);
+        this.timer = setInterval(() => this.tick(), 2000);
+      },
+      stop() {
+        if (this.timer) {
+          clearInterval(this.timer);
+          this.timer = null;
+        }
+      },
+      onBrowserSwap(ev) {
+        const t = ev && ev.target;
+        if (!t || t.id !== 'browser') return;
+        const url = new URL(ev.detail?.path || window.location.href, window.location.origin);
+        // Prefer path from swapped listing links context; fall back to query.
+        const browser = document.getElementById('browser');
+        const crumb = browser && browser.querySelector('[data-dlp-folder]');
+        this.path = (crumb && crumb.getAttribute('data-dlp-folder')) || url.searchParams.get('path') || '';
+        this.applyGlyphsFromDom();
+        this.tick();
+        this.arm();
+      },
+      async tick() {
+        try {
+          const [progRes, stRes] = await Promise.all([
+            fetch('/api/dlp/progress', { credentials: 'same-origin' }),
+            fetch('/api/dlp/statuses?path=' + encodeURIComponent(this.path || ''), {
+              credentials: 'same-origin',
+            }),
+          ]);
+          if (progRes.ok) {
+            const p = await progRes.json();
+            this.total = p.total || 0;
+            this.done = p.done || 0;
+            this.complete = !!p.complete;
+            this.batchRunning = !!p.batch_running;
+            this.modelReady = p.model_ready !== false;
+            this.modelLoading = !!p.model_loading;
+            this.modelError = p.model_error || null;
+            if (this.classifyMode === 'stub') {
+              this.complete = true;
+              this.visible = true;
+            } else {
+              this.visible =
+                !this.complete ||
+                this.batchRunning ||
+                this.modelLoading ||
+                !this.modelReady ||
+                !!this.modelError;
+            }
+          }
+          if (stRes.ok) {
+            const s = await stRes.json();
+            this.applyStatuses(s.items || []);
+          }
+          const pendingVisible = this.anyNonTerminal();
+          if (this.complete && !pendingVisible && this.classifyMode !== 'stub') {
+            this.visible = false;
+            this.stop();
+          }
+        } catch (_e) {
+          /* keep last UI state */
+        }
+      },
+      applyStatuses(items) {
+        const byPath = {};
+        for (const it of items) byPath[it.path] = it;
+        document.querySelectorAll('[data-dlp-path]').forEach((el) => {
+          const rel = el.getAttribute('data-dlp-path');
+          const it = byPath[rel];
+          if (!it) return;
+          this.setPhase(el, it.phase, it.label);
+        });
+      },
+      applyGlyphsFromDom() {
+        document.querySelectorAll('[data-dlp-path]').forEach((el) => {
+          const phase = el.getAttribute('data-dlp-phase') || 'pending';
+          this.setPhase(el, phase, null);
+        });
+      },
+      setPhase(el, phase, label) {
+        const p = TERMINAL.has(phase) || phase === 'pending' || phase === 'classifying'
+          ? phase
+          : 'pending';
+        el.setAttribute('data-dlp-phase', p);
+        el.setAttribute('title', TITLES[p] || p);
+        el.setAttribute('aria-label', TITLES[p] || p);
+        if (label) el.setAttribute('data-dlp-label', label);
+        el.className = this.glyphClass(p);
+        el.textContent = this.glyphChar(p);
+      },
+      glyphChar(phase) {
+        if (phase === 'ready') return '✓';
+        if (phase === 'classifying') return '◌';
+        if (phase === 'denied_timeout') return '!';
+        if (phase === 'missing') return '?';
+        return '○';
+      },
+      glyphClass(phase) {
+        const base = 'inline-flex h-5 w-5 items-center justify-center rounded-full text-[11px] font-bold';
+        if (phase === 'ready') return base + ' bg-emerald-500/15 text-emerald-400';
+        if (phase === 'classifying') return base + ' animate-spin bg-sky-500/15 text-sky-300';
+        if (phase === 'denied_timeout') return base + ' bg-amber-500/15 text-amber-300';
+        if (phase === 'missing') return base + ' bg-slate-500/20 text-slate-400';
+        return base + ' bg-slate-700/40 text-slate-500';
+      },
+      anyNonTerminal() {
+        let found = false;
+        document.querySelectorAll('[data-dlp-path]').forEach((el) => {
+          const p = el.getAttribute('data-dlp-phase') || 'pending';
+          if (!TERMINAL.has(p)) found = true;
+        });
+        return found;
+      },
+    };
+  }
+</script>
 {% endblock %}

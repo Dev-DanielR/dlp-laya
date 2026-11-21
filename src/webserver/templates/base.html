@@ -23,6 +23,60 @@
   <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.8/dist/cdn.min.js"></script>
   <style>
     [x-cloak] { display: none !important; }
+
+    /* Always reserve scrollbar space; thumb fades when idle. */
+    :root {
+      --sb-size: 10px;
+      --sb-thumb: rgb(148 163 184 / 0.4);
+      --sb-thumb-active: rgb(148 163 184 / 0.7);
+    }
+    html {
+      scrollbar-gutter: stable;
+      scrollbar-width: thin;
+      scrollbar-color: transparent transparent;
+    }
+    html.is-scrolling,
+    html.is-scrollbar-hover {
+      scrollbar-color: var(--sb-thumb) transparent;
+    }
+    .scroll-area {
+      scrollbar-gutter: stable;
+      scrollbar-width: thin;
+      scrollbar-color: transparent transparent;
+    }
+    .scroll-area.is-scrolling,
+    .scroll-area:hover {
+      scrollbar-color: var(--sb-thumb) transparent;
+    }
+    html::-webkit-scrollbar,
+    .scroll-area::-webkit-scrollbar {
+      width: var(--sb-size);
+      height: var(--sb-size);
+    }
+    html::-webkit-scrollbar-track,
+    .scroll-area::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    html::-webkit-scrollbar-thumb,
+    .scroll-area::-webkit-scrollbar-thumb {
+      background-color: transparent;
+      border-radius: 9999px;
+      border: 2px solid transparent;
+      background-clip: padding-box;
+      transition: background-color 0.2s ease;
+    }
+    html.is-scrolling::-webkit-scrollbar-thumb,
+    html.is-scrollbar-hover::-webkit-scrollbar-thumb,
+    html::-webkit-scrollbar-thumb:hover,
+    .scroll-area.is-scrolling::-webkit-scrollbar-thumb,
+    .scroll-area:hover::-webkit-scrollbar-thumb,
+    .scroll-area::-webkit-scrollbar-thumb:hover {
+      background-color: var(--sb-thumb);
+    }
+    html.is-scrolling::-webkit-scrollbar-thumb:hover,
+    .scroll-area.is-scrolling::-webkit-scrollbar-thumb:hover {
+      background-color: var(--sb-thumb-active);
+    }
   </style>
 </head>
 <body
@@ -34,7 +88,7 @@
   <div class="mx-auto max-w-5xl px-4 py-6">
     <header class="mb-8 flex items-center justify-between gap-4">
       <div>
-        <p class="text-xs uppercase tracking-[0.2em] text-sky-400/80">Universidad de Lima · DAP Laya</p>
+        <p class="text-xs uppercase tracking-[0.2em] text-sky-400/80">Ciberseguridad 757 · DAP Laya</p>
         <h1 class="text-xl font-semibold text-white">{% block heading %}Servidor de archivos{% endblock %}</h1>
       </div>
       {% block header_actions %}{% endblock %}
@@ -75,6 +129,36 @@
         }
       };
     }
+
+    (function autoHideScrollbar() {
+      const IDLE_MS = 900;
+      const timers = new WeakMap();
+
+      function markScrolling(el) {
+        el.classList.add('is-scrolling');
+        const prev = timers.get(el);
+        if (prev) clearTimeout(prev);
+        timers.set(el, setTimeout(() => {
+          el.classList.remove('is-scrolling');
+          timers.delete(el);
+        }, IDLE_MS));
+      }
+
+      window.addEventListener('scroll', () => markScrolling(document.documentElement), { passive: true });
+
+      document.addEventListener('scroll', (ev) => {
+        const t = ev.target;
+        if (t && t !== document && t.classList && t.classList.contains('scroll-area')) {
+          markScrolling(t);
+        }
+      }, { passive: true, capture: true });
+
+      // Near-edge hover reveals the page thumb (WebKit has no scrollbar :hover on html alone).
+      document.addEventListener('mousemove', (ev) => {
+        const near = window.innerWidth - ev.clientX <= 18;
+        document.documentElement.classList.toggle('is-scrollbar-hover', near);
+      }, { passive: true });
+    })();
   </script>
   {% block scripts %}{% endblock %}
 </body>

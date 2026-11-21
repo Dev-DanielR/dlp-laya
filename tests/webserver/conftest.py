@@ -137,6 +137,7 @@ def app(dex_validator, tmp_path):
         app_public_url="https://localhost:8443",
         dlp_url=None,
         dlp_wait_seconds=2.0,
+        classify_mode="stub",
         audit_log_path=str(tmp_path / "audit.jsonl"),
         tls_cert=tmp_path / "cert.pem",
         tls_key=tmp_path / "key.pem",

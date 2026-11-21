@@ -253,7 +253,7 @@ Código en `src/webserver/`. Imagen autocontenida en `docker/Dockerfile` (incluy
 ### UI y OIDC
 
 1. `GET /` — landing; **Sign in with NetBird** → `GET /auth/login` (PKCE) → Dex en `DEX_ISSUER` → `GET /auth/callback` → cookie `dlp_session`.
-2. `GET /browse` — explorador de todo `FILES_ROOT`; carpetas vía HTMX; descargas con `hx-swap="none"` (hx-download solo si `Content-Disposition: attachment`) y toasts Alpine.
+2. `GET /browse` — explorador de todo `FILES_ROOT`; carpetas vía HTMX; descargas con `hx-swap="none"` (hx-download solo si `Content-Disposition: attachment`) y toasts Alpine. Barra global de progreso DLP + glifos por archivo (`/api/dlp/progress`, `/api/dlp/statuses`); el lote de arranque (`DLP_BATCH_ON_START`) rellena la caché.
 3. `GET /files/<ruta>` acepta **Bearer JWT** o **cookie de sesión**.
 
 Registra un cliente OIDC confidencial con redirect `OIDC_REDIRECT_URI` (p. ej. `https://localhost:8443/auth/callback`). Plantilla: `docker/.env.example`.
@@ -262,7 +262,7 @@ Registra un cliente OIDC confidencial con redirect `OIDC_REDIRECT_URI` (p. ej. `
 
 1. Identidad: Bearer Dex o sesión; `preferred_username` / `email` debe coincidir con claves ACL (`ana.alta@knowsyn.dev`, …).
 2. ACL en cascada → `alta` | `media` | `baja` (sin match → 403).
-3. DLP (`DLP_URL`) o stub del manifiesto.
+3. DLP en el mismo contenedor (`CLASSIFY_MODE=dlp`) o stub del manifiesto (`CLASSIFY_MODE=stub`).
 4. Matriz §6.1; si `sanitizado`, reescribe spans (disco intacto).
 5. Auditoría JSON (sin cuerpo ni spans).
 
@@ -276,21 +276,40 @@ Registra un cliente OIDC confidencial con redirect `OIDC_REDIRECT_URI` (p. ej. `
 | `DEX_CLIENT_SECRET` / `OIDC_REDIRECT_URI` | Login browser (PKCE) |
 | `SESSION_SECRET` | Firma de cookie de sesión |
 | `DEX_JWKS_URL` | Opcional (por defecto `{issuer}/keys`) |
-| `DLP_URL` | DLP real; vacío → stub de manifiesto |
+| `CLASSIFY_MODE` | `stub` (manifiesto, default) o `dlp` (daemon localhost en la misma imagen) |
+| `DLP_URL` | Base del daemon (`http://127.0.0.1:8091` si `dlp` y no se define) |
+| `DLP_PORT` / `DLP_AUTOSTART` | Puerto loopback y arranque del segundo proceso |
+| `DLP_DETECTOR` | `laya` (default) o `rules` (sin pesos; solo lab/tests) |
+| `LAYA_*` | `LAYA_DEVICE`, `LAYA_THRESHOLD`, `LAYA_REGION`, `LAYA_CACHE_DIR` |
 | `FILES_ROOT` | Por defecto `/files` |
 | `ACL_PATH` / `MANIFEST_PATH` | ACL y manifiesto |
 | `TLS_CERT_PATH` / `TLS_KEY_PATH` | Rutas PEM (self-signed al arrancar si faltan; no van en la imagen) |
 | `BIND_PORT` | Por defecto `8443` |
 
-### Build y run
+### Build y run (local)
+
+Imagen: **`dlp-laya`**. Contenedor local nombrado `dlp-laya` (scripts bajo `scripts/`).
+
+Ejecutar **dentro de WSL** (no desde PowerShell vía `wsl -e …`):
 
 ```bash
-docker build -f docker/Dockerfile -t dlp-laya-web .
 # Editar docker/.env (ver .env.example), luego:
-./docker/run.sh          # https://localhost:8443
+./scripts/docker-build.sh
+./scripts/docker-start.sh          # https://localhost:8443
+./scripts/docker-status.sh         # logs + DLP/web health (sin ps/curl en la imagen)
+./scripts/docker-attach.sh         # shell en el contenedor
+./scripts/docker-stop.sh
+# Recrear si cambió .env/imagen: FORCE=1 ./scripts/docker-start.sh
 ```
+Nombre del contenedor: `CONTAINER_NAME` (default `dlp-laya`). No uses la variable `NAME` — WSL la exporta como el nombre del PC Windows.
+Con `CLASSIFY_MODE=dlp`, el primer arranque descarga pesos Laya (puede tardar minutos); mirar `docker logs -f dlp-laya` o `./scripts/docker-status.sh`.
+Caché Laya/certs en volúmenes Docker (`dlp-laya-laya`, `dlp-laya-certs`); `--restart unless-stopped` por si el daemon reinicia contenedores.
 
-Desarrollo local (HTTP): `PYTHONPATH=src … python -m webserver` (`COOKIE_SECURE=0`). Tests: `pytest tests/webserver`.
+`WITH_DLP=0 ./scripts/docker-build.sh` omite torch/laya. Desarrollo sin Docker (HTTP): `PYTHONPATH=src … python -m webserver` (`COOKIE_SECURE=0`). Tests: `pytest tests/webserver tests/dlp_service`.
+
+### Despliegue en VM
+
+`docker/run.sh` es el entrypoint **en el host de despliegue** tras `docker load` del tarball (no el flujo local). Copia el archive + `.env` + `run.sh` y ejecuta `./run.sh` en la VM.
 
 ## 13. Limitaciones
 

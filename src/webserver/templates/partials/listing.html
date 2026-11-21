@@ -1,4 +1,4 @@
-<div class="border-b border-slate-800 px-4 py-3 sm:px-6">
+<div class="border-b border-slate-800 px-4 py-3 sm:px-6" data-dlp-folder="{{ relpath }}">
   <nav class="flex flex-wrap items-center gap-1 text-sm text-slate-400" aria-label="Breadcrumb">
     {% for label, crumb_path in crumbs %}
       {% if not loop.last %}
@@ -17,10 +17,11 @@
   </nav>
 </div>
 
-<div class="overflow-x-auto">
+<div class="scroll-area overflow-x-auto">
   <table class="min-w-full text-left text-sm">
     <thead class="bg-slate-950/40 text-xs uppercase tracking-wide text-slate-500">
       <tr>
+        <th class="w-10 px-3 py-3 text-center" title="Estado DLP">DLP</th>
         <th class="px-4 py-3 sm:px-6">Nombre</th>
         <th class="px-4 py-3">Tipo</th>
         <th class="px-4 py-3 text-right">Tamaño</th>
@@ -30,6 +31,7 @@
     <tbody class="divide-y divide-slate-800">
       {% if parent is not none %}
       <tr class="hover:bg-slate-800/40">
+        <td></td>
         <td class="px-4 py-2.5 sm:px-6" colspan="3">
           <a
             href="{{ url_for('ui.browse', path=parent) }}"
@@ -44,6 +46,23 @@
       {% endif %}
       {% for e in entries %}
       <tr class="hover:bg-slate-800/40">
+        <td class="px-3 py-2.5 text-center">
+          {% if not e.is_dir %}
+          {% set phase = (phases or {}).get(e.relpath, 'pending') %}
+          <span
+            data-dlp-path="{{ e.relpath }}"
+            data-dlp-phase="{{ phase }}"
+            class="inline-flex h-5 w-5 items-center justify-center rounded-full text-[11px] font-bold
+              {% if phase == 'ready' %}bg-emerald-500/15 text-emerald-400
+              {% elif phase == 'classifying' %}animate-spin bg-sky-500/15 text-sky-300
+              {% elif phase == 'denied_timeout' %}bg-amber-500/15 text-amber-300
+              {% elif phase == 'missing' %}bg-slate-500/20 text-slate-400
+              {% else %}bg-slate-700/40 text-slate-500{% endif %}"
+            title="{% if phase == 'ready' %}Clasificado{% elif phase == 'classifying' %}Clasificando…{% elif phase == 'denied_timeout' %}Tiempo de clasificación agotado{% elif phase == 'missing' %}No encontrado{% else %}Pendiente de clasificar{% endif %}"
+            aria-label="{% if phase == 'ready' %}Clasificado{% elif phase == 'classifying' %}Clasificando…{% elif phase == 'denied_timeout' %}Tiempo de clasificación agotado{% elif phase == 'missing' %}No encontrado{% else %}Pendiente de clasificar{% endif %}"
+          >{% if phase == 'ready' %}✓{% elif phase == 'classifying' %}◌{% elif phase == 'denied_timeout' %}!{% elif phase == 'missing' %}?{% else %}○{% endif %}</span>
+          {% endif %}
+        </td>
         <td class="px-4 py-2.5 font-medium text-slate-100 sm:px-6">
           {% if e.is_dir %}
           <a
@@ -76,7 +95,7 @@
       </tr>
       {% else %}
       <tr>
-        <td colspan="4" class="px-4 py-8 text-center text-slate-500 sm:px-6">Carpeta vacía</td>
+        <td colspan="5" class="px-4 py-8 text-center text-slate-500 sm:px-6">Carpeta vacía</td>
       </tr>
       {% endfor %}
     </tbody>

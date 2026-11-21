@@ -27,6 +27,7 @@ class Settings:
     app_public_url: str | None
     dlp_url: str | None
     dlp_wait_seconds: float
+    classify_mode: str
     audit_log_path: str
     tls_cert: Path
     tls_key: Path
@@ -43,6 +44,13 @@ class Settings:
         jwks = jwks_raw or None
         dlp_raw = os.environ.get("DLP_URL", "").strip().rstrip("/")
         dlp = dlp_raw or None
+        mode = os.environ.get("CLASSIFY_MODE", "stub").strip().lower() or "stub"
+        if mode not in {"stub", "dlp"}:
+            raise RuntimeError(
+                f"CLASSIFY_MODE must be 'stub' or 'dlp' (got {mode!r})"
+            )
+        if mode == "dlp" and not dlp:
+            dlp = "http://127.0.0.1:8091"
         redirect = os.environ.get("OIDC_REDIRECT_URI", "").strip()
         session_secret = os.environ.get("SESSION_SECRET", "").strip()
         if not session_secret:
@@ -67,7 +75,8 @@ class Settings:
             session_secret=session_secret,
             app_public_url=public,
             dlp_url=dlp,
-            dlp_wait_seconds=float(os.environ.get("DLP_WAIT_SECONDS", "30")),
+            dlp_wait_seconds=float(os.environ.get("DLP_WAIT_SECONDS", "120")),
+            classify_mode=mode,
             audit_log_path=os.environ.get("AUDIT_LOG_PATH", "-"),
             tls_cert=Path(os.environ.get("TLS_CERT_PATH", "/certs/cert.pem")),
             tls_key=Path(os.environ.get("TLS_KEY_PATH", "/certs/key.pem")),

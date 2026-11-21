@@ -5,6 +5,7 @@ from __future__ import annotations
 from flask import (
     Blueprint,
     current_app,
+    jsonify,
     redirect,
     render_template,
     request,
@@ -16,6 +17,22 @@ from webserver.auth.session import PKCE_COOKIE
 from webserver.browsing import breadcrumbs, list_dir, normalize_rel
 
 bp = Blueprint("ui", __name__)
+
+
+def _phases_for_entries(entries) -> dict[str, str]:
+    """Map file relpaths -> DLP phase for the current listing."""
+    dlp = current_app.config.get("DLP")
+    if dlp is None or not hasattr(dlp, "statuses"):
+        return {}
+    file_paths = [e.relpath for e in entries if not e.is_dir]
+    if not file_paths:
+        return {}
+    try:
+        items = dlp.statuses(paths=file_paths)
+    except Exception:  # noqa: BLE001 — browse still works without glyphs
+        return {}
+    return {i.path: i.phase for i in items if i.path}
+
 
 
 def _secure() -> bool:
@@ -166,6 +183,7 @@ def browse():
 
     crumbs = breadcrumbs(rel)
     parent = "/".join(rel.split("/")[:-1]) if rel else None
+    phases = _phases_for_entries(entries)
 
     if request.headers.get("HX-Request"):
         return render_template(
@@ -175,6 +193,8 @@ def browse():
             relpath=rel,
             parent=parent,
             user=user,
+            phases=phases,
+            classify_mode=settings.classify_mode,
         )
 
     return render_template(
@@ -184,4 +204,53 @@ def browse():
         relpath=rel,
         parent=parent,
         user=user,
+        phases=phases,
+        classify_mode=settings.classify_mode,
     )
+
+
+@bp.get("/api/dlp/progress")
+def dlp_progress():
+    user = current_session_user(request)
+    if user is None:
+        return jsonify({"error": "unauthorized"}), 401
+    dlp = current_app.config.get("DLP")
+    if dlp is None or not hasattr(dlp, "progress"):
+        return jsonify({"error": "dlp unavailable"}), 503
+    try:
+        prog = dlp.progress()
+    except Exception as exc:  # noqa: BLE001
+        return jsonify({"error": str(exc)}), 502
+    return jsonify(prog.to_api()), 200
+
+
+@bp.get("/api/dlp/statuses")
+def dlp_statuses():
+    user = current_session_user(request)
+    if user is None:
+        return jsonify({"error": "unauthorized"}), 401
+    dlp = current_app.config.get("DLP")
+    if dlp is None or not hasattr(dlp, "statuses"):
+        return jsonify({"error": "dlp unavailable"}), 503
+
+    settings = current_app.config["SETTINGS"]
+    raw_path = request.args.get("path", "")
+    try:
+        rel = normalize_rel(raw_path)
+        _target, entries = list_dir(settings.files_root, rel)
+    except (ValueError, FileNotFoundError, NotADirectoryError):
+        return jsonify({"error": "invalid path"}), 404
+
+    file_paths = [e.relpath for e in entries if not e.is_dir]
+    try:
+        items = dlp.statuses(paths=file_paths) if file_paths else []
+    except Exception as exc:  # noqa: BLE001
+        return jsonify({"error": str(exc)}), 502
+    return jsonify(
+        {
+            "path": rel,
+            "items": [
+                {"path": i.path, "phase": i.phase, "label": i.label} for i in items
+            ],
+        }
+    ), 200

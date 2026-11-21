@@ -92,3 +92,29 @@ def test_htmx_success_is_attachment(client, mint_token):
     assert r.status_code == 200
     assert "attachment" in r.headers.get("Content-Disposition", "").lower()
     assert "toast" in r.headers.get("HX-Trigger", "")
+
+
+def test_classify_mode_dlp_uses_http_client(app, mint_token):
+    """With a live DLP client installed, downloads call classify (not stub)."""
+    from unittest.mock import MagicMock
+
+    from webserver.dlp.base import ClassifyResult
+    from webserver.dlp.http_client import HttpDlpClient
+
+    fake = MagicMock(spec=HttpDlpClient)
+    fake.classify.return_value = ClassifyResult(
+        status="ready",
+        hash="abc",
+        label="limpio",
+        spans=[],
+        laya_version="mock-laya",
+        cache_hit=False,
+    )
+    app.config["DLP"] = fake
+    client = app.test_client()
+    r = client.get(
+        "/files/publico/catalogo_publico.txt",
+        headers=_auth(mint_token, "carla.baja@knowsyn.dev"),
+    )
+    assert r.status_code == 200
+    assert fake.classify.call_count >= 1

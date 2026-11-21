@@ -48,7 +48,10 @@ def create_app(settings: Settings | None = None) -> Flask:
     else:
         app.config["OIDC"] = None
 
-    if settings.dlp_url:
+    # CLASSIFY_MODE=stub keeps ManifestDlpStub for A/B vs live DLP.
+    if settings.classify_mode == "dlp":
+        if not settings.dlp_url:
+            raise RuntimeError("CLASSIFY_MODE=dlp requires DLP_URL")
         app.config["DLP"] = HttpDlpClient(settings.dlp_url)
     else:
         app.config["DLP"] = ManifestDlpStub(settings.manifest_path)
