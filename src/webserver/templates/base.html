@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="es" class="h-full">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>{% block title %}DAP Laya{% endblock %}</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            ink: { 950: '#0b1220', 900: '#111827', 700: '#334155' },
+            accent: { 400: '#38bdf8', 500: '#0ea5e9', 600: '#0284c7' }
+          }
+        }
+      }
+    }
+  </script>
+  <script src="https://cdn.jsdelivr.net/npm/htmx.org@4.0.1/dist/htmx.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/htmx.org@4.0.1/dist/ext/hx-download.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/htmx.org@4.0.1/dist/ext/hx-alpine-compat.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.8/dist/cdn.min.js"></script>
+  <style>
+    [x-cloak] { display: none !important; }
+  </style>
+</head>
+<body
+  class="min-h-full bg-slate-950 text-slate-100 antialiased"
+  hx-ext="alpine-compat,download"
+  x-data="toastApp()"
+  @toast.window="pushToast($event.detail)"
+>
+  <div class="mx-auto max-w-5xl px-4 py-6">
+    <header class="mb-8 flex items-center justify-between gap-4">
+      <div>
+        <p class="text-xs uppercase tracking-[0.2em] text-sky-400/80">Universidad de Lima · DAP Laya</p>
+        <h1 class="text-xl font-semibold text-white">{% block heading %}Servidor de archivos{% endblock %}</h1>
+      </div>
+      {% block header_actions %}{% endblock %}
+    </header>
+    {% block content %}{% endblock %}
+  </div>
+
+  <div
+    class="pointer-events-none fixed inset-x-0 bottom-0 z-50 flex flex-col items-end gap-2 p-4 sm:p-6"
+    aria-live="polite"
+  >
+    <template x-for="t in toasts" :key="t.id">
+      <div
+        class="pointer-events-auto w-full max-w-sm rounded-lg border px-4 py-3 shadow-lg backdrop-blur"
+        :class="t.type === 'success'
+          ? 'border-emerald-500/40 bg-emerald-950/90 text-emerald-100'
+          : 'border-rose-500/40 bg-rose-950/90 text-rose-100'"
+        x-text="t.message"
+        x-show="true"
+        x-transition
+      ></div>
+    </template>
+  </div>
+
+  <script>
+    function toastApp() {
+      return {
+        toasts: [],
+        pushToast(detail) {
+          // HTMX HX-Trigger bubbles to window; do not re-dispatch (that doubles toasts).
+          const message = (detail && detail.message) || 'Notificación';
+          const type = (detail && detail.type) || 'success';
+          const id = Date.now() + Math.random();
+          this.toasts.push({ id, message, type });
+          setTimeout(() => {
+            this.toasts = this.toasts.filter((t) => t.id !== id);
+          }, 4200);
+        }
+      };
+    }
+  </script>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

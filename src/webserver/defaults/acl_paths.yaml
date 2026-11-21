@@ -1,0 +1,63 @@
+# Cascading ACL path prefixes for Andes Advisory corpus.
+# Evaluated by the webserver: (user, path) → sensibilidad; longest/most-specific match wins.
+#
+# Sensibilidades: alta | media | baja
+# Paths are absolute as seen by Flask under the shared volume (/files/...).
+# Dex preferred_username / email must match these user keys.
+
+users:
+  # Keys must match JWT preferred_username or email from NetBird / Dex.
+  ana.alta@knowsyn.dev:
+    description: Socia / lead de cuenta — acceso completo a confidenciales
+    rules:
+      - path: /files
+        sensitivity: alta
+
+  bruno.media@knowsyn.dev:
+    description: Consultor — entregables y proyectos; sin confidencial de cliente
+    rules:
+      - path: /files/publico
+        sensitivity: media
+      - path: /files/interno/ops
+        sensitivity: media
+      - path: /files/clientes
+        sensitivity: media
+      - path: /files/clientes/banco_andino/confidencial
+        sensitivity: baja          # override: insuficiente para PII → denegado si con_pii
+      - path: /files/clientes/retail_pacifico/confidencial
+        sensitivity: baja
+      - path: /files/clientes/minera_sierra/confidencial
+        sensitivity: baja
+      - path: /files/clientes/clinica_salud_lima/confidencial
+        sensitivity: baja
+      - path: /files/clientes/agro_valle/confidencial
+        sensitivity: baja
+      - path: /files/proyectos
+        sensitivity: media
+      - path: /files/casos
+        sensitivity: media         # CASO 02 / 04 sanitize path
+      - path: /files/interno/rrhh
+        sensitivity: baja
+      - path: /files/interno/finanzas
+        sensitivity: baja
+      - path: /files/interno/legal
+        sensitivity: baja
+
+  carla.baja@knowsyn.dev:
+    description: Analista junior / marketing — solo público e internos ops
+    rules:
+      - path: /files/publico
+        sensitivity: baja
+      - path: /files/interno/ops
+        sensitivity: baja
+      - path: /files/casos/caso01_informe_sensible.docx
+        sensitivity: baja          # CASO 01: match explícito + PII → denegado
+      - path: /files/proyectos
+        sensitivity: baja
+
+# Notes for case mapping:
+# - CASO 01: carla.baja + casos/caso01_* → sensibilidad baja + con_pii → denegado
+# - CASO 02: bruno.media + casos/caso02_clientes_demo.csv → media + con_pii → sanitizado
+# - CASO 04: same file as ana.alta / bruno.media / carla.baja (or no ACL) → completo / sanitizado / denegado
+# - CASO 05: any user + publico/* limpio → completo
+# - No matching rule → denegado (ACL miss)

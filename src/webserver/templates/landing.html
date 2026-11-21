@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}Ingresar · DAP Laya{% endblock %}
+{% block heading %}Acceso protegido{% endblock %}
+
+{% block content %}
+<section class="rounded-2xl border border-slate-800 bg-slate-900/60 p-8 shadow-xl">
+  <p class="max-w-xl text-slate-300">
+    Autentícate con la identidad NetBird (Dex embebido en
+    <span class="font-mono text-sky-300">{{ issuer }}</span>)
+    para explorar el corpus y descargar según la ACL.
+  </p>
+
+  {% if error %}
+  <p class="mt-4 rounded-lg border border-rose-500/40 bg-rose-950/50 px-4 py-3 text-sm text-rose-100">
+    {{ error }}
+  </p>
+  {% endif %}
+
+  <div class="mt-8 flex flex-wrap items-center gap-3">
+    {% if oidc_ready %}
+    <a
+      href="{{ url_for('ui.auth_login') }}"
+      class="inline-flex items-center rounded-lg bg-sky-500 px-5 py-2.5 text-sm font-semibold text-slate-950 hover:bg-sky-400"
+    >
+      Sign in with NetBird
+    </a>
+    {% else %}
+    <button
+      type="button"
+      disabled
+      class="inline-flex cursor-not-allowed items-center rounded-lg bg-slate-700 px-5 py-2.5 text-sm font-semibold text-slate-400"
+    >
+      Sign in with NetBird
+    </button>
+    <p class="text-sm text-amber-200/90">
+      Configura <code class="font-mono">DEX_CLIENT_SECRET</code> y
+      <code class="font-mono">OIDC_REDIRECT_URI</code> en <code class="font-mono">docker/.env</code>.
+    </p>
+    {% endif %}
+  </div>
+</section>
+{% endblock %}
